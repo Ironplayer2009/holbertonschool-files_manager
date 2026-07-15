@@ -11,11 +11,6 @@ app.use(express.json({
 
 app.use('/', router);
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  return res.status(500).json({ error: err.message });
-});
-
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
