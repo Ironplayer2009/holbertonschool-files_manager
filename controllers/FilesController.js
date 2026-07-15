@@ -149,48 +149,49 @@ class FilesController {
   }
 
   static async getIndex(req, res) {
-    const token = req.header('X-Token');
+    try {
+      const token = req.header('X-Token');
 
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const userId = await redisClient.get(`auth_${token}`);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const parentId = req.query.parentId || '0';
+      const page = parseInt(req.query.page || '0', 10);
+
+      const match = {
+        userId: new ObjectId(userId),
+        parentId: parentId === '0'
+          ? 0
+          : new ObjectId(parentId),
+      };
+
+      const files = await dbClient.db.collection('files').aggregate([
+        { $match: match },
+        { $skip: page * 20 },
+        { $limit: 20 },
+      ]).toArray();
+
+      return res.status(200).json(files.map((file) => ({
+        id: file._id.toString(),
+        userId: file.userId.toString(),
+        name: file.name,
+        type: file.type,
+        isPublic: file.isPublic,
+        parentId: file.parentId === 0
+          ? 0
+          : file.parentId.toString(),
+      })));
+    } catch (err) {
+      console.log(err);
+      return res.status(500).json({ error: 'Server error' });
     }
-
-    const userId = await redisClient.get(`auth_${token}`);
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const parentId = req.query.parentId || '0';
-    const page = parseInt(req.query.page || '0', 10);
-
-    if (parentId !== '0' && !ObjectId.isValid(parentId)) {
-      return res.status(200).json([]);
-    }
-
-    const query = {
-      userId: ObjectId(userId),
-      parentId: parentId === '0'
-        ? { $in: [0, '0'] }
-        : { $in: [ObjectId(parentId), parentId] },
-    };
-
-    const files = await dbClient.db.collection('files')
-      .find(query)
-      .skip(page * 20)
-      .limit(20)
-      .toArray();
-
-    return res.status(200).json(files.map((file) => ({
-      id: file._id.toString(),
-      userId: file.userId.toString(),
-      name: file.name,
-      type: file.type,
-      isPublic: file.isPublic || false,
-      parentId: file.parentId === 0 || file.parentId === '0'
-        ? 0
-        : file.parentId.toString(),
-    })));
   }
 
   static async putPublish(req, res) {
